@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>MQ Diagnostic Agent - DEADQ Monitor v2.0</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #10b981;
+        }
+
+        .status-indicator.disconnected {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .logout-link {
+            color: #ef4444;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 8px 15px;
+            border: 1px solid #ef4444;
+            border-radius: 6px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .logout-link:hover {
+            background: #ef4444;
+            color: white;
+        }
+
+        .auto-resolve-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .auto-resolve-toggle label {
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #10b981;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        .auto-resolve-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #10b981;
+            color: white;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .audit-log-entry {
+            padding: 12px;
+            background: #f8f9fa;
+            border-left: 3px solid #10b981;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .audit-log-entry.error {
+            border-left-color: #ef4444;
+        }
+
+        .audit-log-entry.partial {
+            border-left-color: #f59e0b;
+        }
+
+        .audit-log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .audit-log-action {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .audit-log-timestamp {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .audit-log-details {
+            font-size: 13px;
+            color: #555;
+            margin-top: 4px;
+        }
+
+        .audit-log-queue {
+            font-family: 'Courier New', monospace;
+            background: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .capacity-section {
+            grid-column: 1 / -1;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        .panel-header {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .alert-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .alert-item {
+            background: #f9fafb;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .alert-item:hover {
+            background: #f3f4f6;
+            transform: translateX(5px);
+        }
+
+        .alert-item.severity-critical {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .alert-item.severity-high {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .alert-item.severity-medium {
+            border-left-color: #3b82f6;
+            background: #eff6ff;
+        }
+
+        .alert-checkbox {
+            margin-right: 10px;
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 5px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .select-all-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: auto;
+        }
+
+        .select-all-container input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .select-all-container label {
+            cursor: pointer;
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .bulk-action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .bulk-action-btn.danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .bulk-action-btn.danger:hover {
+            background: #dc2626;
+        }
+
+        .bulk-action-btn.primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .bulk-action-btn.primary:hover {
+            background: #2563eb;
+        }
+
+        .bulk-action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .alert-time {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .alert-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .alert-queue {
+            font-size: 12px;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .detail-panel {
+            display: none;
+        }
+
+        .detail-panel.active {
+            display: block;
+        }
+
+        .detail-section {
+            margin-bottom: 20px;
+        }
+
+        .detail-section h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .detail-info {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .detail-info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .detail-info-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .detail-value {
+            color: #333;
+            font-family: monospace;
+        }
+
+        .recommendations {
+            list-style: none;
+        }
+
+        .recommendations li {
+            background: #eff6ff;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .recommendations li:before {
+            content: "💡 ";
+            margin-right: 8px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .action-btn.primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .action-btn.primary:hover {
+            background: #2563eb;
+        }
+
+        .action-btn.danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .action-btn.danger:hover {
+            background: #dc2626;
+        }
+
+        .action-btn.secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .action-btn.secondary:hover {
+            background: #4b5563;
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .approval-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .approval-modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .modal-body {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .message-preview {
+            background: #f9fafb;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 100px;
+            overflow-y: auto;
+            margin-top: 10px;
+        
+        .threshold-selector {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 5px;
+        }
+        
+        .threshold-selector label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .threshold-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .threshold-btn {
+            padding: 8px 16px;
+            border: 2px solid #e5e7eb;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .threshold-btn:hover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        
+        .threshold-btn.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        
+        .capacity-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .capacity-card {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #3b82f6;
+            transition: all 0.3s;
+        }
+        
+        .capacity-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .capacity-card.status-critical {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+        
+        .capacity-card.status-warning {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+        
+        .capacity-card.status-caution {
+            border-left-color: #eab308;
+            background: #fefce8;
+        }
+        
+        .capacity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .capacity-queue-name {
+            font-weight: 600;
+            color: #333;
+            font-family: monospace;
+        }
+        
+        .capacity-percent {
+            font-size: 20px;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+        
+        .capacity-card.status-critical .capacity-percent {
+            color: #ef4444;
+        }
+        
+        .capacity-card.status-warning .capacity-percent {
+            color: #f59e0b;
+        }
+        
+        .capacity-card.status-caution .capacity-percent {
+            color: #eab308;
+        }
+        
+        .capacity-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .capacity-bar-fill {
+            height: 100%;
+            background: #3b82f6;
+            transition: width 0.5s ease;
+        }
+        
+        .capacity-card.status-critical .capacity-bar-fill {
+            background: #ef4444;
+        }
+        
+        .capacity-card.status-warning .capacity-bar-fill {
+            background: #f59e0b;
+        }
+        
+        .capacity-card.status-caution .capacity-bar-fill {
+            background: #eab308;
+        }
+        
+        .capacity-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #666;
+        }
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <script>
+        // Define authenticated fetch helper FIRST
+        window.authenticatedFetch = async function(url, options = {}) {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                window.location.href = '/login.html';
+                throw new Error('No authentication token');
+            }
+            
+            options.headers = options.headers || {};
+            options.headers['Authorization'] = `Bearer ${token}`;
+            
+            const response = await fetch(url, options);
+            
+            if (response.status === 401) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('username');
+                window.location.href = '/login.html';
+                throw new Error('Authentication failed');
+            }
+            
+            return response;
+        };
+
+        // THEN check authentication
+        (function() {
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                window.location.href = '/login.html';
+                return;
+            }
+        })();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 MQ Diagnostic Agent - DEADQ Monitor</h1>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <div class="auto-resolve-toggle">
+                    <label for="autoResolveToggle">🤖 Auto-Resolve</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="autoResolveToggle" onchange="toggleAutoResolve()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="status-badge">
+                    <div class="status-indicator disconnected" id="statusIndicator"></div>
+                    <span class="status-text" id="statusText">Connecting...</span>
+                </div>
+                <a href="/queue-monitor" style="color:#3b82f6;text-decoration:none;font-size:14px;font-weight:500;padding:8px 15px;border:1px solid #3b82f6;border-radius:6px;transition:all 0.3s;">📊 Live Queue Monitor</a>
+                <a href="#" class="logout-link" onclick="logout(); return false;">🚪 Logout</a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="panel" id="deadqPanel" style="display: none;">
+                <div class="panel-header">📬 Dead Letter Queue Alerts</div>
+                <div class="bulk-actions" id="bulkActions" style="display: none;">
+                    <div class="select-all-container">
+                        <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                        <label for="selectAll">Select All</label>
+                    </div>
+                    <button class="bulk-action-btn danger" id="clearSelectedBtn" onclick="clearSelected()" disabled>
+                        🗑️ Clear Selected
+                    </button>
+                    <button class="bulk-action-btn primary" id="replayAndClearBtn" onclick="replayAndClearSelected()" disabled>
+                        🔄 Replay & Clear Selected
+                    </button>
+                </div>
+                <div class="alert-list" id="alertList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✅</div>
+                        <div>No messages in dead letter queue</div>
+                        <div style="font-size: 12px; margin-top: 10px; color: #999;">
+                            Monitoring active - alerts will appear here
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel detail-panel" id="detailPanel">
+                <div class="panel-header">📋 Alert Details</div>
+                <div id="detailContent">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👈</div>
+                        <div>Select an alert to view details</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="panel capacity-section">
+            <div class="panel-header">📊 Queue Capacity Monitor</div>
+            <div class="threshold-selector">
+                <label>Show queues at or above:</label>
+                <div class="threshold-buttons">
+                    <button class="threshold-btn" data-threshold="50" onclick="setCapacityThreshold(50)">50%</button>
+                    <button class="threshold-btn" data-threshold="60" onclick="setCapacityThreshold(60)">60%</button>
+                    <button class="threshold-btn" data-threshold="70" onclick="setCapacityThreshold(70)">70%</button>
+                    <button class="threshold-btn active" data-threshold="80" onclick="setCapacityThreshold(80)">80%</button>
+                    <button class="threshold-btn" data-threshold="90" onclick="setCapacityThreshold(90)">90%</button>
+                </div>
+            </div>
+            <div class="capacity-grid" id="capacityGrid">
+                <div class="empty-state">
+                    <div class="empty-state-icon">✅</div>
+                    <div>No queues above threshold</div>
+                    <div style="font-size: 12px; margin-top: 10px; color: #999;">
+                        Queues will appear here when they reach the selected capacity threshold
+                    </div>
+                </div>
+            </div>
+        
+        <div class="panel capacity-section">
+            <div class="panel-header">📋 Auto-Resolve Audit Log</div>
+            <div id="auditLogContainer">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📝</div>
+                    <div>No auto-resolve actions yet</div>
+                    <div style="font-size: 12px; margin-top: 10px; color: #999;">
+                        Auto-resolved actions will appear here when auto-resolve is enabled
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <div class="approval-modal" id="approvalModal">
+        <div class="modal-content">
+            <div class="modal-header" id="modalHeader">Confirm Action</div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-actions">
+                <button class="action-btn secondary" onclick="closeApprovalModal()">Cancel</button>
+                <button class="action-btn danger" id="confirmBtn" onclick="confirmAction()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let alerts = [];
+        let selectedAlert = null;
+        let pendingAction = null;
+        let capacityQueues = [];
+        let currentThreshold = 80;
+        let autoResolveEnabled = false;  // Track auto-resolve state
+        let auditLog = [];  // Track audit log entries
+        let selectedAlerts = new Set();  // Track selected alert IDs
+
+        // WebSocket connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateStatus(true);
+            };
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus(false);
+                // Reconnect after 5 seconds
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus(false);
+            };
+        }
+
+        function updateStatus(connected) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            
+            if (connected) {
+                indicator.classList.remove('disconnected');
+                indicator.classList.add('connected');
+                text.textContent = 'Connected & Monitoring';
+            } else {
+                indicator.classList.remove('connected');
+                indicator.classList.add('disconnected');
+                text.textContent = 'Disconnected';
+            }
+        }
+
+        function handleWebSocketMessage(message) {
+            console.log('Received message:', message);
+
+            if (message.type === 'deadq_alert') {
+                addAlert(message.data);
+            } else if (message.type === 'alert_removed') {
+                removeAlert(message.data.message_id);
+            } else if (message.type === 'action_result') {
+                handleActionResult(message.data);
+            } else if (message.type === 'connected') {
+                console.log('Connected to agent:', message.data);
+            } else if (message.type === 'capacity_update') {
+                updateCapacityDisplay(message.data);
+            }
+        }
+
+        function removeAlert(messageId) {
+            console.log('Removing alert for message:', messageId);
+            
+            // Remove from alerts array
+            const index = alerts.findIndex(a => a.message_id === messageId);
+            if (index !== -1) {
+                alerts.splice(index, 1);
+                renderAlerts();
+                
+                // Close detail panel if this alert was selected
+                if (selectedAlert && selectedAlert.message_id === messageId) {
+                    document.getElementById('detailPanel').classList.remove('active');
+                    selectedAlert = null;
+                }
+                
+                console.log(`Alert removed. Remaining alerts: ${alerts.length}`);
+            }
+        }
+
+        function addAlert(alertData) {
+            alerts.unshift({
+                ...alertData,
+                id: Date.now()
+            });
+            renderAlerts();
+            
+            // Show notification
+            if (Notification.permission === 'granted') {
+                new Notification('MQ DEADQ Alert', {
+                    body: alertData.reason_description,
+                    icon: '🔔'
+                });
+            }
+        }
+
+        function renderAlerts() {
+            const alertList = document.getElementById('alertList');
+            const bulkActions = document.getElementById('bulkActions');
+            const deadqPanel = document.getElementById('deadqPanel');
+            
+            if (alerts.length === 0) {
+                // Hide the entire DEADQ panel when there are no alerts
+                deadqPanel.style.display = 'none';
+                bulkActions.style.display = 'none';
+                return;
+            }
+
+            // Show the DEADQ panel and bulk actions when there are alerts
+            deadqPanel.style.display = 'block';
+            bulkActions.style.display = 'flex';
+
+            alertList.innerHTML = alerts.map(alert => `
+                <div class="alert-item severity-${alert.severity}">
+                    <div class="alert-header">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" class="alert-checkbox"
+                                   id="checkbox-${alert.id}"
+                                   onchange="toggleAlert(${alert.id})"
+                                   ${selectedAlerts.has(alert.id) ? 'checked' : ''}
+                                   onclick="event.stopPropagation()">
+                            <div class="alert-title" onclick="selectAlert(${alert.id})" style="cursor: pointer;">
+                                ${alert.reason_description}
+                                ${alert.auto_resolved ? '<span class="auto-resolve-badge">AUTO-RESOLVED</span>' : ''}
+                            </div>
+                        </div>
+                        <div class="alert-time">${new Date(alert.timestamp).toLocaleTimeString()}</div>
+                    </div>
+                    <div class="alert-description" onclick="selectAlert(${alert.id})" style="cursor: pointer;">
+                        Reason Code: ${alert.reason_code} ${alert.reason_code_name ? `(${alert.reason_code_name})` : ''} | Feedback: ${alert.feedback_code}
+                    </div>
+                    <div class="alert-queue" onclick="selectAlert(${alert.id})" style="cursor: pointer;">
+                        Original Queue: ${alert.original_queue}
+                    </div>
+                </div>
+            `).join('');
+            
+            updateBulkActionButtons();
+        }
+
+        function selectAlert(alertId) {
+            selectedAlert = alerts.find(a => a.id === alertId);
+            if (selectedAlert) {
+                renderAlertDetails(selectedAlert);
+                document.getElementById('detailPanel').classList.add('active');
+            }
+        }
+
+        function renderAlertDetails(alert) {
+            const detailContent = document.getElementById('detailContent');
+            
+            detailContent.innerHTML = `
+                <div class="detail-section">
+                    <h3>📊 Message Information</h3>
+                    <div class="detail-info">
+                        <div class="detail-info-row">
+                            <span class="detail-label">Severity:</span>
+                            <span class="detail-value">${alert.severity.toUpperCase()}</span>
+                        </div>
+                        <div class="detail-info-row">
+                            <span class="detail-label">Reason Code:</span>
+                            <span class="detail-value">${alert.reason_code} ${alert.reason_code_name ? `(${alert.reason_code_name})` : ''}</span>
+                        </div>
+                        <div class="detail-info-row">
+                            <span class="detail-label">Feedback Code:</span>
+                            <span class="detail-value">${alert.feedback_code}</span>
+                        </div>
+                        <div class="detail-info-row">
+                            <span class="detail-label">Original Queue:</span>
+                            <span class="detail-value">${alert.original_queue}</span>
+                        </div>
+                        <div class="detail-info-row">
+                            <span class="detail-label">Timestamp:</span>
+                            <span class="detail-value">${new Date(alert.timestamp).toLocaleString()}</span>
+                        </div>
+                    </div>
+                    <div class="message-preview">
+                        ${alert.message_preview}
+                    </div>
+                </div>
+
+                ${alert.ai_explanation ? `
+                <div class="detail-section">
+                    <h3>🤖 AI Explanation</h3>
+                    <div style="background: #e5e7eb; color: #1f2937; padding: 15px; border-radius: 8px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #d1d5db;">
+                        ${alert.ai_explanation}
+                    </div>
+                </div>
+                ` : ''}
+
+                <div class="detail-section">
+                    <h3>💡 Quick Recommendations</h3>
+                    <ul class="recommendations">
+                        ${alert.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>
+
+                <div class="detail-section">
+                    <h3>⚡ Available Actions</h3>
+                    <div class="actions">
+                        ${alert.actions.map(action => `
+                            <button 
+                                class="action-btn ${action.type === 'action' ? (action.id === 'delete_message' ? 'danger' : 'primary') : 'secondary'}"
+                                onclick="executeAction('${action.id}', ${alert.id}, ${action.requires_approval})"
+                            >
+                                ${action.label}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function executeAction(actionId, alertId, requiresApproval) {
+            const alert = alerts.find(a => a.id === alertId);
+            
+            if (requiresApproval) {
+                showApprovalModal(actionId, alert);
+            } else {
+                performAction(actionId, alertId);
+            }
+        }
+
+        function showApprovalModal(actionId, alert) {
+            pendingAction = { actionId, alertId: alert.id };
+            
+            const modal = document.getElementById('approvalModal');
+            const header = document.getElementById('modalHeader');
+            const body = document.getElementById('modalBody');
+            const confirmBtn = document.getElementById('confirmBtn');
+            
+            if (actionId === 'replay_message') {
+                header.textContent = 'Confirm Message Replay';
+                body.innerHTML = `
+                    <p>Are you sure you want to replay this message to the original queue?</p>
+                    <p><strong>Original Queue:</strong> ${alert.original_queue}</p>
+                    <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                        This will remove the message from the dead letter queue and put it back on the original queue.
+                    </p>
+                `;
+                confirmBtn.className = 'action-btn primary';
+                confirmBtn.textContent = 'Replay Message';
+            } else if (actionId === 'delete_message') {
+                header.textContent = 'Confirm Message Deletion';
+                body.innerHTML = `
+                    <p style="color: #ef4444; font-weight: 600;">⚠️ This action cannot be undone!</p>
+                    <p style="margin-top: 10px;">Are you sure you want to permanently delete this message?</p>
+                    <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                        The message will be removed from the dead letter queue and cannot be recovered.
+                    </p>
+                `;
+                confirmBtn.className = 'action-btn danger';
+                confirmBtn.textContent = 'Delete Message';
+            } else if (actionId === 'increase_maxdepth') {
+                header.textContent = 'Increase Queue MAXDEPTH';
+                const currentMaxdepth = alert.current_maxdepth || 5000;
+                const suggestedMaxdepth = Math.ceil(currentMaxdepth * 1.5);
+                body.innerHTML = `
+                    <p>Increase MAXDEPTH for queue: <strong>${alert.original_queue}</strong></p>
+                    <p style="margin-top: 10px;">Current MAXDEPTH: <strong>${currentMaxdepth}</strong></p>
+                    <div style="margin-top: 15px;">
+                        <label for="newMaxdepth" style="display: block; margin-bottom: 5px; font-weight: 600;">New MAXDEPTH:</label>
+                        <input
+                            type="number"
+                            id="newMaxdepth"
+                            value="${suggestedMaxdepth}"
+                            min="${currentMaxdepth + 1}"
+                            max="999999999"
+                            style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 14px;"
+                        />
+                        <p style="margin-top: 5px; color: #666; font-size: 12px;">
+                            Suggested: ${suggestedMaxdepth} (50% increase)
+                        </p>
+                    </div>
+                `;
+                confirmBtn.className = 'action-btn primary';
+                confirmBtn.textContent = 'Increase MAXDEPTH';
+            }
+            
+            modal.classList.add('active');
+        }
+
+        function closeApprovalModal() {
+            document.getElementById('approvalModal').classList.remove('active');
+            pendingAction = null;
+        }
+
+        function confirmAction() {
+            if (pendingAction) {
+                // Get the new maxdepth value if this is an increase_maxdepth action
+                let params = {};
+                if (pendingAction.actionId === 'increase_maxdepth') {
+                    const newMaxdepthInput = document.getElementById('newMaxdepth');
+                    if (newMaxdepthInput) {
+                        params.new_maxdepth = parseInt(newMaxdepthInput.value);
+                    }
+                }
+                performAction(pendingAction.actionId, pendingAction.alertId, params);
+                closeApprovalModal();
+            }
+        }
+
+        async function performAction(actionId, alertId, params = {}) {
+            try {
+                // Find the alert to get the actual MQ message_id
+                const alertData = alerts.find(a => a.id === alertId);
+                if (!alertData || !alertData.message_id) {
+                    window.alert(`❌ Error: Could not find message_id for this alert`);
+                    return;
+                }
+                
+                const requestBody = {
+                    action_id: actionId,
+                    message_id: alertData.message_id,  // Use the actual MQ message_id, not the alert ID
+                    approved: true,
+                    ...params  // Include any additional parameters (like new_maxdepth)
+                };
+                
+                const response = await authenticatedFetch('/api/action', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    window.alert(`✅ ${result.message}`);
+                    
+                    // Remove alert if message was deleted or replayed
+                    if (actionId === 'delete_message' || actionId === 'replay_message') {
+                        alerts = alerts.filter(a => a.id !== alertId);
+                        renderAlerts();
+                        document.getElementById('detailPanel').classList.remove('active');
+                    }
+                } else {
+                    window.alert(`❌ Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error executing action:', error);
+                window.alert(`❌ Error: ${error.message}`);
+            }
+        }
+
+        function handleActionResult(data) {
+            console.log('Action result:', data);
+        }
+
+        // Bulk Operations Functions
+        function toggleAlert(alertId) {
+            if (selectedAlerts.has(alertId)) {
+                selectedAlerts.delete(alertId);
+            } else {
+                selectedAlerts.add(alertId);
+            }
+            updateBulkActionButtons();
+            updateSelectAllCheckbox();
+        }
+
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAll');
+            if (selectAllCheckbox.checked) {
+                // Select all alerts
+                alerts.forEach(alert => selectedAlerts.add(alert.id));
+            } else {
+                // Deselect all alerts
+                selectedAlerts.clear();
+            }
+            renderAlerts();
+        }
+
+        function updateSelectAllCheckbox() {
+            const selectAllCheckbox = document.getElementById('selectAll');
+            if (alerts.length === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else if (selectedAlerts.size === alerts.length) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else if (selectedAlerts.size > 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+        }
+
+        function updateBulkActionButtons() {
+            const clearBtn = document.getElementById('clearSelectedBtn');
+            const replayBtn = document.getElementById('replayAndClearBtn');
+            const hasSelection = selectedAlerts.size > 0;
+            
+            clearBtn.disabled = !hasSelection;
+            replayBtn.disabled = !hasSelection;
+            
+            if (hasSelection) {
+                clearBtn.textContent = `🗑️ Clear Selected (${selectedAlerts.size})`;
+                replayBtn.textContent = `🔄 Replay & Clear Selected (${selectedAlerts.size})`;
+            } else {
+                clearBtn.textContent = '🗑️ Clear Selected';
+                replayBtn.textContent = '🔄 Replay & Clear Selected';
+            }
+        }
+
+        async function clearSelected() {
+            if (selectedAlerts.size === 0) return;
+            
+            const count = selectedAlerts.size;
+            if (!confirm(`⚠️ Are you sure you want to delete ${count} message(s) from the DEADQ?\n\nThis action cannot be undone!`)) {
+                return;
+            }
+            
+            try {
+                // Get message IDs for selected alerts
+                const messageIds = alerts
+                    .filter(a => selectedAlerts.has(a.id))
+                    .map(a => a.message_id);
+                
+                const response = await authenticatedFetch('/api/bulk-action', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'delete',
+                        message_ids: messageIds,
+                        approved: true
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success' || result.status === 'partial_success') {
+                    window.alert(`✅ ${result.message}\n\nSuccessful: ${result.results.successful}\nFailed: ${result.results.failed}`);
+                    
+                    // Remove successfully deleted alerts
+                    const successfulIds = result.results.details
+                        .filter(d => d.status === 'success')
+                        .map(d => d.message_id);
+                    
+                    alerts = alerts.filter(a => !successfulIds.includes(a.message_id));
+                    selectedAlerts.clear();
+                    renderAlerts();
+                    document.getElementById('detailPanel').classList.remove('active');
+                } else {
+                    window.alert(`❌ Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error executing bulk delete:', error);
+                window.alert(`❌ Error: ${error.message}`);
+            }
+        }
+
+        async function replayAndClearSelected() {
+            if (selectedAlerts.size === 0) return;
+            
+            const count = selectedAlerts.size;
+            if (!confirm(`⚠️ Are you sure you want to replay and delete ${count} message(s)?\n\nMessages will be replayed to their original queues and then removed from DEADQ.`)) {
+                return;
+            }
+            
+            try {
+                // Get message IDs for selected alerts
+                const messageIds = alerts
+                    .filter(a => selectedAlerts.has(a.id))
+                    .map(a => a.message_id);
+                
+                const response = await authenticatedFetch('/api/bulk-action', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'replay_and_delete',
+                        message_ids: messageIds,
+                        approved: true
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success' || result.status === 'partial_success') {
+                    window.alert(`✅ ${result.message}\n\nSuccessful: ${result.results.successful}\nFailed: ${result.results.failed}`);
+                    
+                    // Remove successfully processed alerts
+                    const successfulIds = result.results.details
+                        .filter(d => d.status === 'success')
+                        .map(d => d.message_id);
+                    
+                    alerts = alerts.filter(a => !successfulIds.includes(a.message_id));
+                    selectedAlerts.clear();
+                    renderAlerts();
+                    document.getElementById('detailPanel').classList.remove('active');
+                } else {
+                    window.alert(`❌ Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error executing bulk replay and delete:', error);
+                window.alert(`❌ Error: ${error.message}`);
+            }
+        }
+
+        // Request notification permission
+        if (Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        // Initialize
+        connectWebSocket();
+
+        // Keep connection alive with ping
+        
+        // Capacity Monitoring Functions
+        function updateCapacityDisplay(data) {
+            capacityQueues = data.queues || [];
+            renderCapacityQueues();
+        }
+        
+        function renderCapacityQueues() {
+            const capacityGrid = document.getElementById('capacityGrid');
+            
+            if (capacityQueues.length === 0) {
+                capacityGrid.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✅</div>
+                        <div>No queues above ${currentThreshold}% capacity</div>
+                        <div style="font-size: 12px; margin-top: 10px; color: #999;">
+                            Queues will appear here when they reach the selected capacity threshold
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            capacityGrid.innerHTML = capacityQueues.map(queue => `
+                <div class="capacity-card status-${queue.status}">
+                    <div class="capacity-header">
+                        <div class="capacity-queue-name">${queue.queue_name}</div>
+                        <div class="capacity-percent">${queue.percent_full}%</div>
+                    </div>
+                    <div class="capacity-bar">
+                        <div class="capacity-bar-fill" style="width: ${queue.percent_full}%"></div>
+                    </div>
+                    <div class="capacity-details">
+                        <span>Current: ${queue.current_depth}</span>
+                        <span>Max: ${queue.max_depth}</span>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="action-btn" onclick="increaseQueueMaxDepth('${queue.queue_name}', ${queue.max_depth})"
+                                style="width: 100%; padding: 8px; font-size: 12px;">
+                            📈 Increase MAXDEPTH
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        async function setCapacityThreshold(threshold) {
+            try {
+                // Update UI
+                document.querySelectorAll('.threshold-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (parseInt(btn.dataset.threshold) === threshold) {
+                        btn.classList.add('active');
+                    }
+                });
+                
+                currentThreshold = threshold;
+                
+                // Send to backend
+                const response = await authenticatedFetch('/api/capacity/threshold', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ threshold })
+                });
+                
+                const result = await response.json();
+                console.log('Threshold updated:', result);
+                
+                // Clear current display while waiting for new data
+                capacityQueues = [];
+                renderCapacityQueues();
+                
+            } catch (error) {
+                console.error('Error setting threshold:', error);
+            }
+        }
+        
+        async function increaseQueueMaxDepth(queueName, currentMaxDepth) {
+            try {
+                // Prompt user for new MAXDEPTH value
+                const suggestedValue = Math.max(Math.ceil(currentMaxDepth * 1.5), currentMaxDepth + 10);
+                const userInput = prompt(
+                    `Enter new MAXDEPTH for queue "${queueName}"\n\n` +
+                    `Current MAXDEPTH: ${currentMaxDepth}\n` +
+                    `Suggested value: ${suggestedValue}\n\n` +
+                    `Enter new MAXDEPTH (must be greater than ${currentMaxDepth}):`,
+                    suggestedValue
+                );
+                
+                // User cancelled
+                if (userInput === null) {
+                    return;
+                }
+                
+                // Validate input
+                const newMaxDepth = parseInt(userInput);
+                if (isNaN(newMaxDepth) || newMaxDepth <= currentMaxDepth) {
+                    alert(`❌ Invalid input. New MAXDEPTH must be a number greater than ${currentMaxDepth}.`);
+                    return;
+                }
+                
+                // Show loading state
+                const button = event.target;
+                const originalText = button.innerHTML;
+                button.disabled = true;
+                button.innerHTML = '⏳ Increasing...';
+                
+                // Send request to backend
+                const response = await authenticatedFetch('/api/action', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action_id: 'increase_maxdepth',
+                        message_id: queueName,  // Required by backend API
+                        approved: true,
+                        new_maxdepth: newMaxDepth,
+                        queue_name: queueName  // Pass queue name directly for capacity monitoring
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert(`✅ Success!\n\n${result.message}`);
+                    // The capacity monitor will automatically update via WebSocket
+                } else {
+                    alert(`❌ Error: ${result.message || 'Failed to increase MAXDEPTH'}`);
+                }
+                
+                // Restore button
+                button.disabled = false;
+                button.innerHTML = originalText;
+                
+            } catch (error) {
+                console.error('Error increasing MAXDEPTH:', error);
+                alert(`❌ Error: ${error.message}`);
+                
+                // Restore button
+                if (event && event.target) {
+                    event.target.disabled = false;
+                    event.target.innerHTML = '📈 Increase MAXDEPTH';
+                }
+            }
+        }
+        
+        // Logout Function
+        function logout() {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('username');
+            window.location.href = '/login.html';
+        }
+
+        // Auto-Resolve Functions
+        async function toggleAutoResolve() {
+            const checkbox = document.getElementById('autoResolveToggle');
+            autoResolveEnabled = checkbox.checked;
+            
+            try {
+                const response = await authenticatedFetch('/api/auto-resolve/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled: autoResolveEnabled })
+                });
+                
+                const result = await response.json();
+                console.log('Auto-resolve toggled:', result);
+                
+                // Refresh audit log
+                await loadAuditLog();
+            } catch (error) {
+                console.error('Error toggling auto-resolve:', error);
+                // Revert checkbox on error
+                checkbox.checked = !autoResolveEnabled;
+                autoResolveEnabled = !autoResolveEnabled;
+            }
+        }
+
+        async function loadAuditLog() {
+            try {
+                const response = await authenticatedFetch('/api/auto-resolve/audit-log');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    auditLog = data.audit_log;
+                    renderAuditLog();
+                }
+            } catch (error) {
+                console.error('Error loading audit log:', error);
+            }
+        }
+
+        function renderAuditLog() {
+            const container = document.getElementById('auditLogContainer');
+            
+            if (auditLog.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <div>No auto-resolve actions yet</div>
+                        <div style="font-size: 12px; margin-top: 10px; color: #999;">
+                            Auto-resolved actions will appear here when auto-resolve is enabled
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = auditLog.map(entry => {
+                const statusClass = entry.status === 'success' ? '' : 
+                                  entry.status === 'error' ? 'error' : 'partial';
+                const statusIcon = entry.status === 'success' ? '✅' : 
+                                 entry.status === 'error' ? '❌' : '⚠️';
+                
+                const timestamp = new Date(entry.timestamp).toLocaleString();
+                const actionLabel = entry.action === 'increase_maxdepth_and_replay' ? 'Increased MAXDEPTH & Replayed' :
+                                  entry.action === 'create_queue_and_replay' ? 'Created Queue & Replayed' :
+                                  entry.action === 'increase_maxdepth' ? 'Increased MAXDEPTH' :
+                                  entry.action === 'create_queue' ? 'Created Queue' : entry.action;
+                
+                return `
+                    <div class="audit-log-entry ${statusClass}">
+                        <div class="audit-log-header">
+                            <div class="audit-log-action">${statusIcon} ${actionLabel}</div>
+                            <div class="audit-log-timestamp">${timestamp}</div>
+                        </div>
+                        <div class="audit-log-details">
+                            <div><strong>Queue:</strong> <span class="audit-log-queue">${entry.original_queue}</span></div>
+                            <div><strong>Reason Code:</strong> ${entry.reason_code}</div>
+                            <div><strong>Message ID:</strong> <code style="font-size: 11px;">${entry.message_id.substring(0, 16)}...</code></div>
+                            <div style="margin-top: 6px; color: #666;">${entry.details}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Load auto-resolve status on page load
+        async function loadAutoResolveStatus() {
+            try {
+                const response = await authenticatedFetch('/api/auto-resolve/status');
+                const status = await response.json();
+                
+                autoResolveEnabled = status.enabled;
+                document.getElementById('autoResolveToggle').checked = status.enabled;
+                
+                console.log('Auto-resolve status:', status);
+            } catch (error) {
+                console.error('Error loading auto-resolve status:', error);
+            }
+        }
+
+        // Call on page load
+        loadAutoResolveStatus();
+        loadAuditLog();
+
+        // Refresh audit log periodically
+        setInterval(loadAuditLog, 10000);  // Every 10 seconds
+        
+        // Keep WebSocket connection alive with ping
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
+
+<!-- Made with Bob -->

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deadq-forwarder
+  namespace: mq-diag-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deadq-forwarder
+  template:
+    metadata:
+      labels:
+        app: deadq-forwarder
+    spec:
+      containers:
+      - name: deadq-forwarder
+        image: image-registry.openshift-image-registry.svc:5000/mq-diag-agent/deadq-forwarder:latest
+        imagePullPolicy: Always
+        env:
+        - name: IBMMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: mq-diag-agent-secret
+              key: username
+        - name: IBMMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mq-diag-agent-secret
+              key: password
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"

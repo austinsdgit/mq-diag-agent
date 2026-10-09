@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+websockets
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+pymqi>=1.12.0
+python-dotenv
+httpx
+mcp>=0.9.0
+bcrypt>=4.0.0

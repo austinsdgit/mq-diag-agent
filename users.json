@@ -1,0 +1,19 @@
+{
+  "users": [
+    {
+      "user_id": "admin",
+      "role": "admin",
+      "queue_permissions": []
+    },
+    {
+      "user_id": "viewer",
+      "role": "reader",
+      "queue_permissions": []
+    },
+    {
+      "user_id": "mqm",
+      "role": "admin",
+      "queue_permissions": []
+    }
+  ]
+}

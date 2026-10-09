@@ -1,0 +1,12 @@
+{
+  "users": {
+    "admin": {
+      "password": "$2b$12$/OHU3kyV3hmsjeC6Riyd6e/GkeG03biIW4P1Qv.SnxLO.0P/yKy9S",
+      "role": "admin"
+    },
+    "viewer": {
+      "password": "$2b$12$8ap12JW5kZHYAHXDRSpDJOrZxqulidQzlfWTCt61B8EgVYwAZm3HS",
+      "role": "viewer"
+    }
+  }
+}

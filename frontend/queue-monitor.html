@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>MQ Live Queue Monitor</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #22263a;
+            --border: #2e3250;
+            --text: #e2e8f0;
+            --muted: #64748b;
+            --accent: #6366f1;
+            --green: #22c55e;
+            --yellow: #eab308;
+            --orange: #f97316;
+            --red: #ef4444;
+            --dlq: #f43f5e;
+            --dlq-dim: #7f1d2e;
+            --bar-normal: #6366f1;
+            --bar-caution: #eab308;
+            --bar-warning: #f97316;
+            --bar-critical: #ef4444;
+            --bar-dlq: #f43f5e;
+        }
+
+        html, body { height: 100%; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ── Header ── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .header-left { display: flex; align-items: center; gap: 14px; }
+
+        .header h1 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+
+        .ws-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--red);
+            flex-shrink: 0;
+            transition: background 0.4s;
+        }
+        .ws-dot.live { background: var(--green); animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .ws-label { font-size: 12px; color: var(--muted); }
+
+        .header-right { display: flex; align-items: center; gap: 16px; }
+
+        .last-update { font-size: 12px; color: var(--muted); }
+
+        .nav-link {
+            font-size: 12px;
+            color: var(--accent);
+            text-decoration: none;
+            padding: 5px 10px;
+            border: 1px solid var(--accent);
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+        .nav-link:hover { background: var(--accent); color: #fff; }
+
+        /* ── Stats bar ── */
+        .stats-bar {
+            display: flex;
+            gap: 12px;
+            padding: 10px 24px;
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+
+        .stat-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 4px 12px;
+            white-space: nowrap;
+            font-size: 12px;
+        }
+        .stat-pill .stat-value { font-weight: 700; font-size: 13px; }
+        .stat-pill.dlq-stat { border-color: var(--dlq); }
+        .stat-pill.dlq-stat .stat-value { color: var(--dlq); }
+        .stat-pill.warn-stat { border-color: var(--orange); }
+        .stat-pill.warn-stat .stat-value { color: var(--orange); }
+
+        /* ── Chart area ── */
+        .chart-wrapper {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 16px 24px 0;
+            min-height: 0;
+        }
+
+        .chart-outer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .chart-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .chart-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .maxdepth-label {
+            font-size: 11px;
+            color: var(--muted);
+        }
+        .maxdepth-label span { color: var(--text); font-weight: 600; }
+
+        /* The actual chart canvas */
+        .chart-inner {
+            flex: 1;
+            display: flex;
+            align-items: flex-end;          /* bars grow upward */
+            gap: 0;
+            padding: 0 8px 0;
+            min-height: 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Horizontal grid lines drawn with pseudo-elements on the container */
+        .chart-inner::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                repeating-linear-gradient(
+                    to top,
+                    transparent 0%,
+                    transparent calc(25% - 1px),
+                    var(--border) calc(25% - 1px),
+                    var(--border) 25%
+                );
+            opacity: 0.5;
+        }
+
+        /* Y-axis tick labels */
+        .y-axis {
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 32px;
+            width: 44px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .y-tick {
+            font-size: 10px;
+            color: var(--muted);
+            text-align: right;
+            padding-right: 4px;
+            transform: translateY(-50%);
+        }
+        /* top tick stays at very top */
+        .y-tick:first-child { transform: none; }
+        /* bottom tick stays at bottom */
+        .y-tick:last-child { transform: none; align-self: flex-end; }
+
+        /* Bar columns */
+        .bars-area {
+            flex: 1;
+            display: flex;
+            align-items: flex-end;
+            gap: 6px;
+            padding: 0 8px 0 52px;   /* left-pad to clear y-axis labels */
+            height: 100%;
+            position: relative;
+        }
+
+        .bar-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            height: 100%;
+            min-width: 32px;
+            max-width: 120px;
+            position: relative;
+            cursor: pointer;
+        }
+
+        /* Clickable glow on hover */
+        .bar-col:hover .bar-fill {
+            filter: brightness(1.18);
+        }
+        .bar-col:hover .bar-label {
+            color: var(--text);
+        }
+
+        /* Depth label above bar */
+        .bar-depth {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            transition: opacity 0.3s;
+        }
+
+        /* The bar itself */
+        .bar-fill {
+            width: 100%;
+            border-radius: 4px 4px 0 0;
+            transition: height 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        background 0.4s ease;
+            min-height: 2px;
+            position: relative;
+        }
+
+        .bar-fill.status-normal   { background: var(--bar-normal); }
+        .bar-fill.status-caution  { background: var(--bar-caution); }
+        .bar-fill.status-warning  { background: var(--bar-warning); }
+        .bar-fill.status-critical { background: var(--bar-critical); }
+        .bar-fill.dlq-bar         { background: var(--bar-dlq); }
+
+        /* Shimmer on active bar */
+        .bar-fill::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.12), transparent 60%);
+            pointer-events: none;
+        }
+
+        /* Queue name label below bar */
+        .bar-label {
+            font-size: 10px;
+            color: var(--muted);
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+            padding: 4px 2px 8px;
+        }
+
+        .bar-col.dlq-col .bar-label {
+            color: var(--dlq);
+            font-weight: 700;
+        }
+
+        /* Percent badge on hover */
+        .bar-col:hover .bar-depth { opacity: 1; }
+        .bar-col .bar-depth { opacity: 0.85; }
+
+        /* Per-bar maxdepth marker line */
+        .bar-maxdepth-line {
+            position: absolute;
+            left: 4px;
+            right: 4px;
+            height: 2px;
+            background: rgba(255,255,255,0.55);
+            border-radius: 1px;
+            pointer-events: none;
+            z-index: 2;
+        }
+        .bar-maxdepth-line::after {
+            content: attr(data-label);
+            position: absolute;
+            right: 0;
+            top: -14px;
+            font-size: 9px;
+            color: rgba(255,255,255,0.6);
+            white-space: nowrap;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        /* ── MAXDEPTH modal overlay ── */
+        .maxdepth-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .maxdepth-modal-overlay.active {
+            display: flex;
+        }
+        .maxdepth-modal {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px 32px;
+            min-width: 360px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .maxdepth-modal h2 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+        .maxdepth-modal .modal-sub {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 20px;
+        }
+        .maxdepth-modal .modal-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .maxdepth-modal .modal-row:last-of-type { border-bottom: none; }
+        .maxdepth-modal .modal-row .label { color: var(--muted); }
+        .maxdepth-modal .modal-row .value { font-weight: 600; color: var(--text); }
+        .maxdepth-modal .input-group {
+            margin: 20px 0 24px;
+        }
+        .maxdepth-modal .input-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .maxdepth-modal .input-group input {
+            width: 100%;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 9px 12px;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .maxdepth-modal .input-group input:focus {
+            border-color: var(--accent);
+        }
+        .maxdepth-modal .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .maxdepth-modal .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: opacity 0.2s;
+        }
+        .maxdepth-modal .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .maxdepth-modal .btn-cancel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .maxdepth-modal .btn-confirm {
+            background: var(--accent);
+            color: #fff;
+        }
+        .maxdepth-modal .btn-confirm:hover:not(:disabled) { opacity: 0.85; }
+        .maxdepth-modal .modal-error {
+            font-size: 12px;
+            color: var(--red);
+            margin-bottom: 10px;
+            min-height: 16px;
+        }
+
+        /* Maxdepth ceiling line */
+        .ceiling-line {
+            position: absolute;
+            left: 52px;
+            right: 8px;
+            top: 0;
+            height: 2px;
+            background: var(--accent);
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .ceiling-line::after {
+            content: 'MAXDEPTH';
+            position: absolute;
+            right: 0;
+            top: 3px;
+            font-size: 9px;
+            color: var(--accent);
+            opacity: 0.8;
+            letter-spacing: 0.08em;
+        }
+
+        /* DLQ separator */
+        .dlq-separator {
+            width: 1px;
+            background: var(--dlq);
+            opacity: 0.4;
+            align-self: stretch;
+            flex-shrink: 0;
+        }
+
+        /* ── Event log strip ── */
+        .event-log-wrapper {
+            height: 110px;
+            flex-shrink: 0;
+            margin: 10px 24px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .event-log-header {
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--muted);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .event-log-scroll {
+            overflow-y: auto;
+            flex: 1;
+            padding: 4px 0;
+        }
+
+        .event-log-scroll::-webkit-scrollbar { width: 4px; }
+        .event-log-scroll::-webkit-scrollbar-track { background: transparent; }
+        .event-log-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        .event-entry {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            padding: 3px 12px;
+            font-size: 12px;
+            border-left: 3px solid transparent;
+            animation: slideIn 0.25s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-8px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        .event-entry.new-msg  { border-left-color: var(--dlq); }
+        .event-entry.resolved { border-left-color: var(--green); }
+        .event-entry.capacity { border-left-color: var(--orange); }
+        .event-entry.connect  { border-left-color: var(--accent); }
+
+        .event-time { color: var(--muted); font-size: 10px; white-space: nowrap; flex-shrink: 0; }
+        .event-msg  { color: var(--text); }
+
+        /* Scrollbar for chart */
+        .bars-area::-webkit-scrollbar { height: 4px; }
+        .bars-area::-webkit-scrollbar-track { background: transparent; }
+        .bars-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        /* Empty state */
+        .empty-chart {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 8px;
+            color: var(--muted);
+        }
+        .empty-chart svg { opacity: 0.25; }
+
+        /* Auth redirect message */
+        #authMsg { display: none; }
+    </style>
+
+    <script>
+        // Auth check — same pattern as main page
+        window.authenticatedFetch = async function(url, options = {}) {
+            const token = localStorage.getItem('auth_token');
+            if (!token) { window.location.href = '/login.html'; throw new Error('No auth'); }
+            options.headers = options.headers || {};
+            options.headers['Authorization'] = `Bearer ${token}`;
+            const response = await fetch(url, options);
+            if (response.status === 401) {
+                localStorage.removeItem('auth_token');
+                window.location.href = '/login.html';
+                throw new Error('Auth failed');
+            }
+            return response;
+        };
+
+        (function() {
+            if (!localStorage.getItem('auth_token')) {
+                window.location.href = '/login.html';
+            }
+        })();
+    </script>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <div class="ws-dot" id="wsDot"></div>
+        <span class="ws-label" id="wsLabel">Connecting…</span>
+        <h1>MQ Live Queue Monitor</h1>
+    </div>
+    <div class="header-right">
+        <span class="last-update" id="lastUpdate">—</span>
+        <a href="/" class="nav-link">← DEADQ Monitor</a>
+        <a href="#" class="nav-link" onclick="logout(); return false;">Logout</a>
+    </div>
+</div>
+
+<div class="stats-bar" id="statsBar">
+    <div class="stat-pill"><span class="stat-value" id="statQueues">—</span><span> queues tracked</span></div>
+    <div class="stat-pill dlq-stat"><span>DLQ depth:&nbsp;</span><span class="stat-value" id="statDlq">—</span></div>
+    <div class="stat-pill warn-stat"><span>Near-full queues:&nbsp;</span><span class="stat-value" id="statNearFull">—</span></div>
+    <div class="stat-pill"><span>Max depth ceiling:&nbsp;</span><span class="stat-value" id="statCeiling">—</span></div>
+</div>
+
+<div class="chart-wrapper">
+    <div class="chart-outer">
+        <div class="chart-title-row">
+            <span class="chart-title">Queue Depths — Real-time</span>
+            <span class="maxdepth-label">Y-axis ceiling: <span id="ceilingVal">—</span> (largest MAXDEPTH across consumer queues)</span>
+        </div>
+        <div class="chart-inner" id="chartInner">
+            <div class="y-axis" id="yAxis"></div>
+            <div class="bars-area" id="barsArea">
+                <div class="empty-chart">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-5"/>
+                    </svg>
+                    <span>Waiting for queue data…</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="event-log-wrapper">
+    <div class="event-log-header">Live Event Log</div>
+    <div class="event-log-scroll" id="eventLog"></div>
+</div>
+
+<!-- MAXDEPTH increase modal -->
+<div class="maxdepth-modal-overlay" id="maxdepthOverlay">
+    <div class="maxdepth-modal">
+        <h2>📈 Increase MAXDEPTH</h2>
+        <p class="modal-sub" id="mdModalSub"></p>
+        <div class="modal-row">
+            <span class="label">Queue</span>
+            <span class="value" id="mdModalQueue">—</span>
+        </div>
+        <div class="modal-row">
+            <span class="label">Current depth</span>
+            <span class="value" id="mdModalDepth">—</span>
+        </div>
+        <div class="modal-row">
+            <span class="label">Current MAXDEPTH</span>
+            <span class="value" id="mdModalMax">—</span>
+        </div>
+        <div class="input-group">
+            <label for="mdNewValue">New MAXDEPTH</label>
+            <input type="number" id="mdNewValue" min="1" placeholder="Enter new value…">
+        </div>
+        <div class="modal-error" id="mdError"></div>
+        <div class="modal-actions">
+            <button class="btn btn-cancel" id="mdCancelBtn">Cancel</button>
+            <button class="btn btn-confirm" id="mdConfirmBtn">Apply</button>
+        </div>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+/* ── State ── */
+let ws = null;
+let queueData = [];          // latest snapshot from queue_depth_update
+let chartCeiling = 0;        // Y-axis max = largest max_depth across non-DLQ queues
+const MAX_LOG = 60;
+let logEntries = [];
+let rafPending = false;
+
+/* ── WebSocket ── */
+function connectWebSocket() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+    ws.onopen = () => {
+        setDot(true);
+        addLog('connect', 'WebSocket connected — receiving live queue data');
+    };
+
+    ws.onmessage = (ev) => {
+        try {
+            const msg = JSON.parse(ev.data);
+            handleMessage(msg);
+        } catch (_) {}
+    };
+
+    ws.onclose = () => {
+        setDot(false);
+        addLog('connect', 'WebSocket disconnected — reconnecting in 4s…');
+        setTimeout(connectWebSocket, 4000);
+    };
+
+    ws.onerror = () => { setDot(false); };
+
+    // Keep-alive ping every 25s
+    setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping' }));
+        }
+    }, 25000);
+}
+
+function setDot(live) {
+    const dot = document.getElementById('wsDot');
+    const lbl = document.getElementById('wsLabel');
+    dot.className = 'ws-dot' + (live ? ' live' : '');
+    lbl.textContent = live ? 'Live' : 'Disconnected';
+}
+
+/* ── Message dispatcher ── */
+function handleMessage(msg) {
+    if (msg.type === 'queue_depth_update') {
+        queueData = msg.data.queues || [];
+        scheduleRender();
+        document.getElementById('lastUpdate').textContent =
+            'Updated ' + new Date().toLocaleTimeString();
+    } else if (msg.type === 'deadq_alert') {
+        const d = msg.data;
+        addLog('new-msg',
+            `DLQ +1 — ${d.reason_description || 'New message'} ← ${d.original_queue || 'unknown queue'}`);
+    } else if (msg.type === 'alert_removed') {
+        addLog('resolved', `DLQ −1 — message ${(msg.data.message_id || '').substring(0, 12)}… removed`);
+    } else if (msg.type === 'capacity_update') {
+        const over = (msg.data.queues || []).filter(q => q.percent_full >= 80);
+        if (over.length > 0) {
+            addLog('capacity',
+                `${over.length} queue(s) at ≥80%: ${over.map(q => q.queue_name).join(', ')}`);
+        }
+    } else if (msg.type === 'connected') {
+        addLog('connect', 'Agent acknowledged: ' + (msg.data.message || 'connected'));
+    }
+}
+
+/* ── Render scheduling ── */
+function scheduleRender() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+        rafPending = false;
+        renderChart();
+        renderStats();
+    });
+}
+
+/* ── Chart renderer ── */
+function renderChart() {
+    const barsArea = document.getElementById('barsArea');
+    const yAxis    = document.getElementById('yAxis');
+    const ceilingEl = document.getElementById('ceilingVal');
+
+    if (!queueData.length) return;
+
+    // Separate DLQ from consumer queues
+    const consumerQueues = queueData.filter(q => !q.is_dlq);
+    const dlqQueues      = queueData.filter(q => q.is_dlq);
+
+    // Y-axis ceiling = largest max_depth among consumer queues
+    chartCeiling = Math.max(...consumerQueues.map(q => q.max_depth), 1);
+    ceilingEl.textContent = chartCeiling.toLocaleString();
+
+    // Build Y-axis ticks (0, 25%, 50%, 75%, 100%)
+    yAxis.innerHTML = [1, 0.75, 0.5, 0.25, 0].map(frac => {
+        const val = Math.round(chartCeiling * frac);
+        return `<div class="y-tick">${val.toLocaleString()}</div>`;
+    }).join('');
+
+    // Order: consumer queues (sorted by name) | separator | DLQ
+    const orderedConsumers = [...consumerQueues].sort((a, b) =>
+        a.queue_name.localeCompare(b.queue_name));
+
+    let html = '';
+
+    orderedConsumers.forEach(q => {
+        const heightPct = Math.min((q.current_depth / chartCeiling) * 100, 100);
+        const maxPct = Math.min((q.max_depth / chartCeiling) * 100, 100);
+        const cls = `status-${q.status}`;
+        html += `
+        <div class="bar-col"
+             title="${escHtml(q.queue_name)}&#10;Depth: ${q.current_depth} / MAXDEPTH: ${q.max_depth} (${q.percent_full}%)"
+             data-queue="${escHtml(q.queue_name)}"
+             data-depth="${q.current_depth}"
+             data-maxdepth="${q.max_depth}">
+            <div class="bar-depth">${q.current_depth.toLocaleString()}</div>
+            <div class="bar-fill ${cls}" style="height:${Math.max(heightPct, 0.3)}%"></div>
+            <div class="bar-maxdepth-line" style="bottom:calc(32px + ${maxPct}% - 1px)" data-label="MAX ${q.max_depth.toLocaleString()}"></div>
+            <div class="bar-label">${escHtml(shortName(q.queue_name))}</div>
+        </div>`;
+    });
+
+    // DLQ separator + bar(s)
+    if (dlqQueues.length > 0) {
+        html += `<div class="dlq-separator"></div>`;
+        dlqQueues.forEach(q => {
+            const heightPct = Math.min((q.current_depth / chartCeiling) * 100, 100);
+            const maxPct = Math.min((q.max_depth / chartCeiling) * 100, 100);
+            html += `
+            <div class="bar-col dlq-col"
+                 title="${escHtml(q.queue_name)}&#10;Depth: ${q.current_depth}&#10;MAXDEPTH: ${q.max_depth}"
+                 data-queue="${escHtml(q.queue_name)}"
+                 data-depth="${q.current_depth}"
+                 data-maxdepth="${q.max_depth}">
+                <div class="bar-depth" style="color:var(--dlq)">${q.current_depth.toLocaleString()}</div>
+                <div class="bar-fill dlq-bar" style="height:${Math.max(heightPct, 0.3)}%"></div>
+                <div class="bar-maxdepth-line" style="bottom:calc(32px + ${maxPct}% - 1px);background:rgba(244,63,94,0.7)" data-label="MAX ${q.max_depth.toLocaleString()}"></div>
+                <div class="bar-label">DLQ</div>
+            </div>`;
+        });
+    }
+
+    barsArea.innerHTML = html;
+
+    // Draw ceiling reference line at the very top of the chart inner area
+    // (only one, shared across all consumer bars)
+    const existing = document.querySelector('.ceiling-line');
+    if (existing) existing.remove();
+    const line = document.createElement('div');
+    line.className = 'ceiling-line';
+    document.getElementById('chartInner').appendChild(line);
+}
+
+/* ── Stats bar renderer ── */
+function renderStats() {
+    if (!queueData.length) return;
+
+    const dlq = queueData.find(q => q.is_dlq);
+    const consumers = queueData.filter(q => !q.is_dlq);
+    const nearFull = consumers.filter(q => q.percent_full >= 70).length;
+
+    document.getElementById('statQueues').textContent   = consumers.length;
+    document.getElementById('statDlq').textContent      = dlq ? dlq.current_depth.toLocaleString() : '0';
+    document.getElementById('statNearFull').textContent = nearFull;
+    document.getElementById('statCeiling').textContent  =
+        chartCeiling > 0 ? chartCeiling.toLocaleString() : '—';
+}
+
+/* ── Event log ── */
+function addLog(type, text) {
+    const now = new Date().toLocaleTimeString();
+    logEntries.unshift({ type, text, time: now });
+    if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG;
+    renderLog();
+}
+
+function renderLog() {
+    const container = document.getElementById('eventLog');
+    container.innerHTML = logEntries.map(e => `
+        <div class="event-entry ${e.type}">
+            <span class="event-time">${e.time}</span>
+            <span class="event-msg">${escHtml(e.text)}</span>
+        </div>`).join('');
+}
+
+/* ── Utilities ── */
+function shortName(name) {
+    // If queue name > 20 chars, abbreviate middle
+    if (name.length <= 20) return name;
+    return name.substring(0, 9) + '…' + name.substring(name.length - 8);
+}
+
+function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function logout() {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('username');
+    window.location.href = '/login.html';
+}
+
+/* ── MAXDEPTH modal ── */
+let _mdQueue = null, _mdCurrentMax = null;
+
+function openMaxDepthModal(queueName, currentDepth, currentMax) {
+    _mdQueue = queueName;
+    _mdCurrentMax = currentMax;
+    const suggested = Math.max(Math.ceil(currentMax * 1.5), currentMax + 10);
+    document.getElementById('mdModalSub').textContent =
+        'Increase the MAXDEPTH for this queue. The change takes effect immediately.';
+    document.getElementById('mdModalQueue').textContent = queueName;
+    document.getElementById('mdModalDepth').textContent = currentDepth.toLocaleString();
+    document.getElementById('mdModalMax').textContent   = currentMax.toLocaleString();
+    document.getElementById('mdNewValue').value = suggested;
+    document.getElementById('mdError').textContent = '';
+    document.getElementById('mdConfirmBtn').disabled = false;
+    document.getElementById('mdConfirmBtn').textContent = 'Apply';
+    document.getElementById('maxdepthOverlay').classList.add('active');
+    setTimeout(() => document.getElementById('mdNewValue').select(), 50);
+}
+
+function closeMaxDepthModal() {
+    document.getElementById('maxdepthOverlay').classList.remove('active');
+    _mdQueue = null;
+    _mdCurrentMax = null;
+}
+
+async function applyMaxDepth() {
+    const input = document.getElementById('mdNewValue');
+    const errEl = document.getElementById('mdError');
+    const confirmBtn = document.getElementById('mdConfirmBtn');
+    const newVal = parseInt(input.value, 10);
+
+    errEl.textContent = '';
+
+    if (isNaN(newVal) || newVal <= _mdCurrentMax) {
+        errEl.textContent = `Value must be a number greater than ${_mdCurrentMax}.`;
+        input.focus();
+        return;
+    }
+
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '⏳ Applying…';
+
+    try {
+        const response = await authenticatedFetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action_id: 'increase_maxdepth',
+                message_id: _mdQueue,
+                approved: true,
+                new_maxdepth: newVal,
+                queue_name: _mdQueue
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            addLog('capacity', `MAXDEPTH for ${_mdQueue} updated → ${newVal.toLocaleString()}`);
+            closeMaxDepthModal();
+        } else {
+            errEl.textContent = result.message || 'Failed to update MAXDEPTH.';
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Apply';
+        }
+    } catch (err) {
+        errEl.textContent = err.message || 'Request failed.';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Apply';
+    }
+}
+
+// Delegated click on the bars area — picks up any .bar-col regardless of innerHTML rebuilds
+document.getElementById('barsArea').addEventListener('click', function(e) {
+    const col = e.target.closest('.bar-col');
+    if (!col) return;
+    const queueName  = col.dataset.queue;
+    const depth      = parseInt(col.dataset.depth, 10);
+    const maxDepth   = parseInt(col.dataset.maxdepth, 10);
+    openMaxDepthModal(queueName, depth, maxDepth);
+});
+
+// Wire modal buttons
+document.getElementById('mdCancelBtn').addEventListener('click', closeMaxDepthModal);
+document.getElementById('mdConfirmBtn').addEventListener('click', applyMaxDepth);
+// Close on overlay background click
+document.getElementById('maxdepthOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeMaxDepthModal();
+});
+// Enter key submits
+document.getElementById('mdNewValue').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') applyMaxDepth();
+    if (e.key === 'Escape') closeMaxDepthModal();
+});
+
+/* ── Boot ── */
+connectWebSocket();
+</script>
+</body>
+</html>
